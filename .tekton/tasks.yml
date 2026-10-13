@@ -1,0 +1,84 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: cleanup
+spec:
+  description: This task will clean up a workspace by deleting all the files.
+  steps:
+    - computeResources: {}
+      env:
+        - name: WORKSPACE_SOURCE_PATH
+          value: $(workspaces.source.path)
+      image: alpine:3
+      name: remove
+      script: >
+        #!/usr/bin/env sh
+
+        set -eu
+
+        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
+
+        if [ -d "${WORKSPACE_SOURCE_PATH}" ] && [ -n "${WORKSPACE_SOURCE_PATH}"
+        ] && [ "${WORKSPACE_SOURCE_PATH}" != "/" ]; then
+          # Delete non-hidden files and directories
+          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
+          # Delete hidden files and directories
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        fi
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+      workingDir: $(workspaces.source.path)
+  workspaces:
+    - name: source
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: eslint
+spec:
+  params:
+    - default: src/ tests/ --ext *.js
+      description: Arguments to pass to ESLint
+      name: args
+      type: string
+  steps:
+    - computeResources: {}
+      image: node:20-alpine
+      name: lint
+      script: |
+        #!/bin/sh
+        set -e
+        echo "Installing dependencies..."
+        npm ci
+        echo "Running ESLint..."
+        npm run lint $(params.args)
+      workingDir: $(workspaces.source.path)
+  workspaces:
+    - name: source
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: jest-test
+spec:
+  params:
+    - default: '-v'
+      description: Arguments to pass to jest
+      name: args
+      type: string
+  steps:
+    - computeResources: {}
+      image: node:20-alpine
+      name: jest
+      script: |
+        #!/bin/sh
+        set -e
+        echo "Installing dependencies..."
+        npm ci
+        echo "Running Jest tests..."
+        npm test $(params.args)
+      workingDir: $(workspaces.source.path)
+  workspaces:
+    - name: source
